@@ -19,9 +19,10 @@ from tkinter import ttk, messagebox, filedialog
 
 from network_diagnostics import check_https, environment_snapshot
 from support_report import build_support_report, compare_runs
+from happ_detection import detect_happ
 
 APP_NAME = "obman"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0-dev"
 CLAUDE_URL = "https://claude.ai/"
 ANTHROPIC_URL = "https://www.anthropic.com/"
 NET_COFFEE_URL = "https://ip.net.coffee/claude"
@@ -200,6 +201,8 @@ class ObmanApp(tk.Tk):
         self._refresh_events()
         self.store.event("app", "INFO", f"Приложение запущено, версия {APP_VERSION}")
         self.after(150, self._drain_queue)
+        self.happ_detection_running = False
+        self.after(300, self.refresh_happ)
 
     def _build_ui(self):
         style = ttk.Style(self)
@@ -216,13 +219,20 @@ class ObmanApp(tk.Tk):
         header = ttk.Frame(root)
         header.pack(fill="x")
         ttk.Label(header, text="obman", style="Title.TLabel").pack(side="left")
-        ttk.Label(header, text="MVP 0.4 · локальная диагностика соединения", style="Sub.TLabel").pack(side="left", padx=12, pady=(5, 0))
+        ttk.Label(header, text="MVP 0.5 · локальная диагностика соединения", style="Sub.TLabel").pack(side="left", padx=12, pady=(5, 0))
         ttk.Button(header, text="Открыть Net.Coffee", command=self.open_net_coffee).pack(side="right")
         ttk.Label(
             root,
             text="Проверяем техническую доступность сети. Это не прогноз блокировки и не оценка аккаунта Anthropic.",
             wraplength=900,
         ).pack(anchor="w", pady=(8, 12))
+
+        happ_frame = ttk.LabelFrame(root, text="Happ — автоопределение", padding=8)
+        happ_frame.pack(fill="x", pady=(0, 8))
+        self.happ_label = ttk.Label(happ_frame, text="Проверка ещё не выполнена", wraplength=750)
+        self.happ_label.pack(side="left", fill="x", expand=True)
+        self.happ_button = ttk.Button(happ_frame, text="Проверить Happ", command=self.refresh_happ)
+        self.happ_button.pack(side="right")
 
         actions = ttk.Frame(root)
         actions.pack(fill="x", pady=(0, 10))
@@ -468,6 +478,7 @@ class ObmanApp(tk.Tk):
         ttk.Button(window, text="Сохранить этот отчёт…", command=save).pack(pady=10)
 
     def run_diagnostics(self):
+        self.refresh_happ()
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
         self.check_button.configure(state="disabled", text="Проверяем…")
@@ -506,7 +517,12 @@ class ObmanApp(tk.Tk):
         try:
             while True:
                 kind, payload = self.events_queue.get_nowait()
-                if kind == "result":
+                if kind == "happ":
+                    self.happ_detection_running = False
+                    self.happ_button.configure(state="normal")
+                    running = {True: "запущен", False: "не обнаружен", None: "проверка недоступна"}[payload["happ_running"]]
+                    self.happ_label.configure(text=f"Happ: {running}. {payload['summary']}.\n{payload['limitation']}")
+                elif kind == "result":
                     r = payload
                     status = ("ОТВЕТ" if r.get("status") == "response_received" else "ВНИМАНИЕ") if r.get("kind") == "https" and r["ok"] else ("OK" if r["ok"] else "ОШИБКА")
                     self.results_tree.insert("", "end", values=(
@@ -527,6 +543,21 @@ class ObmanApp(tk.Tk):
         except queue.Empty:
             pass
         self.after(150, self._drain_queue)
+
+    def refresh_happ(self):
+        if self.happ_detection_running:
+            return
+        self.happ_detection_running = True
+        self.happ_button.configure(state="disabled")
+        self.happ_label.configure(text="Проверяем Happ и настройки Windows…")
+        def worker():
+            try:
+                result = detect_happ()
+            except Exception:
+                result = {"happ_running": None, "summary": "Не удалось определить режим",
+                          "limitation": "Маршрут Claude Desktop не подтверждён."}
+            self.events_queue.put(("happ", result))
+        threading.Thread(target=worker, daemon=True).start()
 
     def show_environment(self):
         report = environment_snapshot()

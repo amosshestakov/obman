@@ -1,8 +1,15 @@
-# obman — MVP 0.4
+# obman — MVP 0.5 (в разработке)
 
 Небольшое Windows-приложение для локальной диагностики сетевого соединения с Claude.
 
 ## Что уже работает
+
+- Автоматическая проверка признаков режима Happ при старте и запуске диагностики.
+  На Windows читаются наличие процесса Happ, системный прокси/PAC и количество
+  активных адаптеров с признаками Happ/Wintun/tun2socks. Признаки другого VPN могут
+  совпадать: результат помечается как предположение, маршрут Claude не подтверждается.
+  Режим «не определён» сохраняется при нехватке данных; настройки не изменяются.
+  Проверки выполняются в фоне. Обновить результат можно кнопкой «Проверить Happ».
 
 - Кнопка открытия [Net.Coffee Claude IP Check](https://ip.net.coffee/claude) в браузере.
 - Проверка DNS и HTTPS-доступности `claude.ai` и `www.anthropic.com`.
@@ -97,6 +104,7 @@ SQLite-база создаётся в `%APPDATA%\\obman\\obman.db`. Журнал
 obman/
 ├── obman.py
 ├── network_diagnostics.py
+├── happ_detection.py
 ├── support_report.py
 ├── README.md
 ├── docs/
@@ -105,7 +113,8 @@ obman/
     ├── test_score.py
     ├── test_reports.py
     ├── test_network_diagnostics.py
-    └── test_support_report.py
+    ├── test_support_report.py
+    └── test_happ_detection.py
 ```
 
 ## Следующие этапы
